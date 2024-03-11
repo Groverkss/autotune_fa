@@ -3,19 +3,21 @@ from pathlib import Path
 
 
 @dataclass
-class TunerConfig:
+class BenchmarkConfig:
     batch: int
     num_heads: int
     seq_len: int
     head_dim: int
+    transpose_v: bool
+    dtype: str = "f16"
+
+@dataclass
+class TunerConfig:
     chip: str
     spec_template: Path
-    transpose_v: bool
     artifact_dir: Path
     iree_build_dir: Path
     debug: bool = False
-    dtype: str = "f16"
-
 
 @dataclass
 class RunnerConfig:
@@ -29,5 +31,10 @@ class RunnerConfig:
 
 @dataclass
 class KernelConfig:
-    attn_tile_size: int
+    block_n: int
+    block_m: int
+    num_warps: int
     waves_per_eu: int
+    # 1 --> 16x16x16
+    # 2 --> 32x32x8
+    layout: int

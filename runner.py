@@ -4,7 +4,8 @@ import re
 import numpy as np
 import torch
 import logging
-from config import TunerConfig, KernelConfig, RunnerConfig
+from config import TunerConfig, KernelConfig, RunnerConfig, BenchmarkConfig
+from spec_gen import SpecGen
 from pathlib import Path
 
 logging.basicConfig()
@@ -27,29 +28,30 @@ def execute_command(command, output_file=""):
         process.wait()
     return out, err
 
-
-#
-#
 class Runner:
-    tuner_config: TunerConfig
-    kernel_config: KernelConfig
-    runner_config: RunnerConfig
-
     def __init__(
         self,
+        benchmark_config: BenchmarkConfig,
         tuner_config: TunerConfig,
         kernel_config: KernelConfig,
         runner_config: RunnerConfig,
     ):
+        self.benchmark_config = benchmark_config
         self.tuner_config = tuner_config
         self.kernel_config = kernel_config
         self.runner_config = runner_config
+
+        spec = SpecGen(self.tuner_config.spec_template).render(self.kernel_config, self.benchmark_config)
+        query_shape = self.get_shape_data()
+        self.spec_file = "spec_" + self.runner_config.benchmark_file_prefix.stem + query_shape + ".mlir"
+        with open(self.spec_file, "w") as f:
+            f.write(spec)
 
     def get_vmfb_file(self):
         return f"{self.tuner_config.artifact_dir}/{self.runner_config.vmfb_file}"
 
     def get_dims(self):
-        config = self.tuner_config
+        config = self.benchmark_config
         return config.batch, config.num_heads, config.seq_len, config.head_dim
 
     def compute_tflops(self, time_in_ms) -> float:
@@ -67,15 +69,15 @@ class Runner:
 
     def get_shape_data(self, transpose: bool = False):
         # TODO: Do not hard code f16.
-        return self.get_shape() + "x" + self.tuner_config.dtype
+        return self.get_shape() + "x" + self.benchmark_config.dtype
 
     def create_mlir(self) -> Path:
         ir = ""
         query_shape = self.get_shape_data()
         key_shape = self.get_shape_data()
-        value_shape = self.get_shape_data(self.tuner_config.transpose_v)
+        value_shape = self.get_shape_data(self.benchmark_config.transpose_v)
         transpose_v = "false"
-        if self.tuner_config.transpose_v:
+        if self.benchmark_config.transpose_v:
             transpose_v = "true"
 
         ir += f"func.func @{self.runner_config.func_name}(%query: tensor<{query_shape}>, %key: tensor<{key_shape}>, %value: tensor<{value_shape}>) -> tensor<{query_shape}> {{\n"
@@ -100,7 +102,7 @@ class Runner:
         ]
 
     def get_td_flags(self):
-        spec = self.tuner_config.spec_template
+        spec = self.spec_file
         return [
             "--iree-codegen-llvmgpu-enable-transform-dialect-jit=false",
             f"--iree-codegen-transform-dialect-library={spec}",
@@ -158,10 +160,10 @@ class Runner:
             np.save(f, q.detach().cpu().numpy())
         with open(f"key_{self.get_shape_data()}.npy", "wb") as f:
             np.save(f, k.detach().cpu().numpy())
-        if self.tuner_config.transpose_v:
+        if self.benchmark_config.transpose_v:
             v = torch.permute(v, (0, 2, 1))
         with open(
-            f"value_{self.get_shape_data(self.tuner_config.transpose_v)}.npy", "wb"
+            f"value_{self.get_shape_data(self.benchmark_config.transpose_v)}.npy", "wb"
         ) as f:
             np.save(f, v.detach().cpu().numpy())
         with open(f"output_{self.get_shape_data()}.npy", "wb") as f:
@@ -186,7 +188,7 @@ class Runner:
             f"--function={self.runner_config.func_name}",
             f"--input=@query_{self.get_shape_data()}.npy",
             f"--input=@key_{self.get_shape_data()}.npy",
-            f"--input=@value_{self.get_shape_data(self.tuner_config.transpose_v)}.npy",
+            f"--input=@value_{self.get_shape_data(self.benchmark_config.transpose_v)}.npy",
             f"--device=rocm",
             f"--output=@computed_{self.get_shape_data()}.npy",
         ]
@@ -200,7 +202,6 @@ class Runner:
         return time_in_ms
 
     def benchmark(self):
-        output_file = f"{str(self.runner_config.benchmark_file_prefix)}{self.get_shape_data()}.mlir"
         command = [
             f"{self.tuner_config.iree_build_dir}/tools/iree-benchmark-module",
             "--module=" + self.get_vmfb_file(),
@@ -211,7 +212,7 @@ class Runner:
 
         query_shape = self.get_shape_data()
         key_shape = self.get_shape_data()
-        value_shape = self.get_shape_data(self.tuner_config.transpose_v)
+        value_shape = self.get_shape_data(self.benchmark_config.transpose_v)
         command += [
             f'--input="{query_shape}"',
             f'--input="{key_shape}"',
@@ -261,18 +262,14 @@ class Runner:
 
 
 if __name__ == "__main__":
+    benchmark_config = BenchmarkConfig(1, 20, 4096, 64, False)
     tuner_config = TunerConfig(
-        1,
-        20,
-        4096,
-        64,
         "gfx940",
         Path("spec.mlir"),
-        False,
         Path("./tmp"),
         Path("../iree/build"),
     )
-    kernel_config = KernelConfig(32, 2)
+    kernel_config = KernelConfig(64, 128, 4, 2, 1)
     runner_config = RunnerConfig()
-    runner = Runner(tuner_config, kernel_config, runner_config)
+    runner = Runner(benchmark_config, tuner_config, kernel_config, runner_config)
     runner.run()
