@@ -192,8 +192,8 @@ module attributes { transform.with_named_sequence } {
     %contract1, %contract2 = transform.split_handle %contracts : (!transform.any_op) -> (!transform.any_op, !transform.any_op)
 
     %layout16x16x16 = transform.param.constant #layout -> !transform.any_param
-    transform.iree.set_contraction_layout_attributes %contract1, %layout16x16x16 : !transform.any_op, !transform.any_param
-    transform.iree.set_contraction_layout_attributes %contract2, %layout16x16x16 : !transform.any_op, !transform.any_param
+    transform.iree.set_contraction_layout_attributes %contract1, %layout16x16x16 { read_layout_indices = array<i64: 0, 1> } : !transform.any_op, !transform.any_param
+    transform.iree.set_contraction_layout_attributes %contract2, %layout16x16x16 { read_layout_indices = array<i64: 0> } : !transform.any_op, !transform.any_param
 
     %distribute_func = transform.structured.match ops{["func.func"]} in %variant_op_3 : (!transform.any_op) -> !transform.any_op
     transform.iree.amdgpu_distribute_vectors %distribute_func : !transform.any_op
@@ -209,6 +209,16 @@ module attributes { transform.with_named_sequence } {
     // ==========================================
     %func_10 = transform.structured.match ops{["func.func"]} in %variant_op_3 : (!transform.any_op) -> !transform.any_op
     transform.iree.gpu_distribute_shared_memory_copy %func_10 : (!transform.any_op) -> ()
+    transform.apply_patterns to %func_10 {
+        transform.apply_patterns.memref.fold_memref_alias_ops
+        transform.apply_patterns.canonicalization
+        transform.apply_patterns.linalg.tiling_canonicalization
+      } : !transform.any_op
+    transform.apply_cse to %func_10 : !transform.any_op
+
+    %forop = transform.structured.match ops{["scf.for"]} in %variant_op_3 : (!transform.any_op) -> !transform.any_op
+    %prefetched_forop = transform.iree.prefetch_shared_memory_copies %forop : (!transform.any_op) -> (!transform.any_op)
+
     transform.apply_patterns to %func_10 {
         transform.apply_patterns.memref.fold_memref_alias_ops
         transform.apply_patterns.canonicalization
