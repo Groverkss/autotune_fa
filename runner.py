@@ -95,8 +95,6 @@ class Runner:
         return [
             f"--iree-hal-target-backends=rocm",
             f"--iree-rocm-target-chip={self.tuner_config.chip}",
-            "--iree-rocm-link-bc=true",
-            "--iree-rocm-bc-dir=/opt/rocm/amdgcn/bitcode",
             "--iree-rocm-waves-per-eu=2",
             "--iree-codegen-gpu-native-math-precision=true",
         ]
@@ -104,7 +102,6 @@ class Runner:
     def get_td_flags(self):
         spec = self.spec_file
         return [
-            "--iree-codegen-llvmgpu-enable-transform-dialect-jit=false",
             f"--iree-codegen-transform-dialect-library={spec}",
         ]
 
@@ -189,7 +186,7 @@ class Runner:
             f"--input=@query_{self.get_shape_data()}.npy",
             f"--input=@key_{self.get_shape_data()}.npy",
             f"--input=@value_{self.get_shape_data(self.benchmark_config.transpose_v)}.npy",
-            f"--device=rocm",
+            f"--device=hip",
             f"--output=@computed_{self.get_shape_data()}.npy",
         ]
         execute_command(flags)
@@ -206,7 +203,7 @@ class Runner:
             f"{self.tuner_config.iree_build_dir}/tools/iree-benchmark-module",
             "--module=" + self.get_vmfb_file(),
             f"--function={self.runner_config.func_name}",
-            f"--device=rocm",
+            f"--device=hip",
             f"--batch_size={self.runner_config.iree_benchmark_reps}",
         ]
 
@@ -264,7 +261,7 @@ class Runner:
 if __name__ == "__main__":
     benchmark_config = BenchmarkConfig(1, 20, 4096, 64, False)
     tuner_config = TunerConfig(
-        "gfx940",
+        "gfx942",
         Path("spec.mlir"),
         Path("./tmp"),
         Path("../iree/build"),
