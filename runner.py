@@ -186,7 +186,7 @@ class Runner:
             f"--input=@query_{self.get_shape_data()}.npy",
             f"--input=@key_{self.get_shape_data()}.npy",
             f"--input=@value_{self.get_shape_data(self.benchmark_config.transpose_v)}.npy",
-            f"--device=hip",
+            f"--device=rocm://5",
             f"--output=@computed_{self.get_shape_data()}.npy",
         ]
         execute_command(flags)
@@ -203,7 +203,7 @@ class Runner:
             f"{self.tuner_config.iree_build_dir}/tools/iree-benchmark-module",
             "--module=" + self.get_vmfb_file(),
             f"--function={self.runner_config.func_name}",
-            f"--device=hip",
+            f"--device=rocm://5",
             f"--batch_size={self.runner_config.iree_benchmark_reps}",
         ]
 
@@ -262,11 +262,11 @@ if __name__ == "__main__":
     benchmark_config = BenchmarkConfig(1, 20, 4096, 64, False)
     tuner_config = TunerConfig(
         "gfx942",
-        Path("spec.mlir"),
+        Path("spec2.mlir"),
         Path("./tmp"),
         Path("../iree/build"),
     )
-    kernel_config = KernelConfig(64, 128, 4, 2, 1)
+    kernel_config = KernelConfig(64, 128, 4, 2, 2)
     runner_config = RunnerConfig()
     runner = Runner(benchmark_config, tuner_config, kernel_config, runner_config)
     runner.run()
