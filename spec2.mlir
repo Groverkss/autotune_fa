@@ -167,9 +167,8 @@ module attributes { transform.with_named_sequence } {
     transform.iree.set_contraction_layout_attributes %contract1, %intrinsic { read_layout_indices = array<i64: 0, 1> } : !transform.any_op, !transform.any_param
     transform.iree.set_contraction_layout_attributes %contract2, %intrinsic : !transform.any_op, !transform.any_param
 
-    transform.print %variant_op : !transform.any_op
-
     %distribute_func = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
+
     %distribute_func_2 = transform.iree.amdgpu_distribute_vectors %distribute_func : (!transform.any_op) -> !transform.any_op
 
     transform.apply_patterns to %distribute_func_2 {
@@ -197,10 +196,8 @@ module attributes { transform.with_named_sequence } {
       } : !transform.any_op
     transform.apply_cse to %distribute_func_2 : !transform.any_op
 
-    transform.print %variant_op : !transform.any_op
-
     %func_11 = transform.structured.match ops{["func.func"]} in %variant_op : (!transform.any_op) -> !transform.any_op
-    // transform.iree.reduce_shared_memory_bank_conflicts %func_11 : (!transform.any_op) -> ()
+    transform.iree.reduce_shared_memory_bank_conflicts %func_11 : (!transform.any_op) -> ()
     transform.yield
   }
 
